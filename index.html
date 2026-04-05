@@ -228,9 +228,14 @@
   </div>
 
   <!-- Overlay écran éteint -->
-  <div class="screen-overlay" id="screenOverlay" onclick="toggleScreenOff()">
+  <div class="screen-overlay" id="screenOverlay">
     <div style="font-size:32px">📴</div>
-    <div class="screen-overlay-hint">Appuie pour rallumer l'écran<br>🎵 VibeTrace tourne en arrière-plan</div>
+    <div class="screen-overlay-hint">🎵 VibeTrace tourne en arrière-plan</div>
+    <input id="unlockInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      placeholder="mot de passe..."
+      style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 16px;color:white;font-family:'Space Mono',monospace;font-size:14px;outline:none;text-align:center;width:200px;margin-top:8px;"
+      oninput="checkUnlock(this.value)">
+    <div id="unlockHint" style="font-size:11px;color:rgba(255,255,255,.2);font-family:'Space Mono',monospace;margin-top:6px;">entre le mot de passe pour rallumer</div>
   </div>
 
   <div class="context-row">
@@ -1173,9 +1178,34 @@ function updateSpeed(spd){
 function toggleScreenOff() {
   const overlay = document.getElementById('screenOverlay');
   const btn = document.getElementById('screenOffBtn');
-  const isOn = overlay.classList.toggle('on');
-  btn.classList.toggle('active', isOn);
-  btn.textContent = isOn ? '💡 Rallumer' : '📴 Écran off';
+  overlay.classList.add('on');
+  btn.classList.add('active');
+  btn.textContent = '📴 Écran off';
+  // Reset input
+  const inp = document.getElementById('unlockInput');
+  inp.value = '';
+  document.getElementById('unlockHint').textContent = 'entre le mot de passe pour rallumer';
+  document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
+  setTimeout(() => inp.focus(), 300);
+}
+
+function checkUnlock(val) {
+  if (val.toLowerCase() === 'zelda') {
+    const overlay = document.getElementById('screenOverlay');
+    const btn = document.getElementById('screenOffBtn');
+    overlay.classList.remove('on');
+    btn.classList.remove('active');
+    btn.textContent = '📴 Écran off';
+    document.getElementById('unlockInput').value = '';
+  } else if (val.length >= 5) {
+    document.getElementById('unlockHint').textContent = '❌ mot de passe incorrect';
+    document.getElementById('unlockHint').style.color = 'rgba(252,92,125,.8)';
+    setTimeout(() => {
+      document.getElementById('unlockInput').value = '';
+      document.getElementById('unlockHint').textContent = 'entre le mot de passe pour rallumer';
+      document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
+    }, 800);
+  }
 }
 
 boot();
