@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0a0a0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VibeTrace">
+<link rel="manifest" href="manifest.json">
 <title>VibeTrace</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -1152,6 +1157,34 @@ function updateSpeed(spd){
 }
 
 boot();
+
+// SERVICE WORKER
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .then(reg => console.log('✅ SW actif:', reg.scope))
+    .catch(err => console.log('❌ SW:', err));
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'gps-resync') checkZones();
+  });
+}
+
+// WAKE LOCK
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') { await requestWakeLock(); checkZones(); }
+});
+requestWakeLock();
+
+// PWA INSTALL
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e;
+  setTimeout(() => toast('📲 Installe VibeTrace sur ton écran d\'accueil !'), 2000);
+});
 </script>
 </body>
 </html>
