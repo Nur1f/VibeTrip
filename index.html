@@ -185,6 +185,12 @@
   .empty-state p{font-size:14px;line-height:1.5;}
   .flash{position:fixed;inset:0;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;pointer-events:none;z-index:50;transition:opacity .3s;}
   .flash.on{opacity:.15;}
+  /* POI timer bar */
+  .poi-timer-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent3),var(--accent));z-index:200;transition:width 1s linear;width:0;}
+  .zone-card.poi-zone{border-color:var(--accent3);}
+  .zone-card.poi-zone::before{background:linear-gradient(to bottom,var(--accent3),var(--accent));}
+  .poi-badge{font-size:10px;font-family:'Space Mono',monospace;background:rgba(92,248,252,.12);border:1px solid var(--accent3);color:var(--accent3);border-radius:6px;padding:2px 6px;margin-left:4px;}
+  .flash.on{opacity:.15;}
 
   /* Exterior zone card */
   #extZoneCard.active-zone{border-color:var(--accent3);background:rgba(92,248,252,.06);}
@@ -209,6 +215,7 @@
 </div>
 
 <div class="flash" id="flash"></div>
+<div class="poi-timer-bar" id="poiTimerBar"></div>
 <div class="toast" id="toast"></div>
 
 <!-- YouTube hidden player -->
@@ -295,6 +302,24 @@
 
   <div class="section-title">Mes zones <button class="add-btn" onclick="openZoneModal()">+ Ajouter</button></div>
   <div class="zones-list" id="zl"></div>
+
+  <!-- Points d'intérêt automatiques -->
+  <div class="section-title" style="margin-top:8px">
+    Points d'intérêt <span style="font-weight:400;font-size:10px;color:var(--text2)">(auto)</span>
+    <button class="add-btn" onclick="scanPOI()" id="scanBtn">🔍 Scanner</button>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;">
+    <p style="font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);line-height:1.6;margin-bottom:10px;">
+      Détecte automatiquement les lieux autour de toi (fast food, arrêts de bus, parcs...) et leur assigne une musique. La musique change seulement si tu restes <b style="color:var(--accent)">15 secondes</b> dans la zone.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--text2)">Rayon POI :</span>
+      <input type="range" min="5" max="100" value="20" id="poiRadiusSlider" oninput="document.getElementById('poiRadiusVal').textContent=this.value+'m'" style="flex:1">
+      <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--accent)" id="poiRadiusVal">20m</span>
+    </div>
+    <div id="poiStatus" style="font-size:11px;font-family:'Space Mono',monospace;color:var(--text2)">Appuie sur Scanner pour détecter les lieux proches</div>
+  </div>
+  <div class="zones-list" id="poiList"></div>
 
   <!-- OWM API key -->
   <div class="section-title" style="margin-top:8px">Météo <span style="font-weight:400;font-size:10px;color:var(--text2)">(OpenWeatherMap)</span></div>
@@ -585,6 +610,7 @@ function startGPS() {
     setStatus('active','GPS actif');
     updateSpeed(curSpd);
     checkZones();
+    checkPOI();
     if (firstFix && owmKey) fetchWeather();
   }, ()=>{ setStatus('','GPS refusé'); toast('⚠️ Autorise le GPS'); },
   {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
@@ -1206,6 +1232,250 @@ function checkUnlock(val) {
       document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
     }, 800);
   }
+}
+
+// ============================================================
+// POI — Points d'intérêt automatiques (OpenStreetMap Overpass)
+// ============================================================
+const POI_TYPES = [
+  { tag:'amenity=fast_food',    emoji:'🍔', label:'Fast Food'     },
+  { tag:'amenity=restaurant',   emoji:'🍽️', label:'Restaurant'    },
+  { tag:'amenity=cafe',         emoji:'☕', label:'Café'          },
+  { tag:'highway=bus_stop',     emoji:'🚌', label:'Arrêt de bus'  },
+  { tag:'railway=station',      emoji:'🚉', label:'Gare'          },
+  { tag:'amenity=school',       emoji:'🏫', label:'École'         },
+  { tag:'leisure=park',         emoji:'🌳', label:'Parc'          },
+  { tag:'shop=supermarket',     emoji:'🛒', label:'Supermarché'   },
+  { tag:'amenity=pharmacy',     emoji:'💊', label:'Pharmacie'     },
+  { tag:'amenity=gym',          emoji:'🏋️', label:'Salle de sport'},
+  { tag:'amenity=cinema',       emoji:'🎬', label:'Cinéma'        },
+  { tag:'amenity=library',      emoji:'📚', label:'Bibliothèque'  },
+];
+
+let poiZones = []; // zones POI détectées
+let curPOI = null; // POI actif en cours
+let poiTimer = null; // timeout 15s
+let poiTimerStart = null;
+let poiTimerInterval = null;
+let pendingPOI = null; // POI en attente (timer en cours)
+
+async function scanPOI() {
+  if (!curLat) { toast('⚠️ GPS pas encore actif'); return; }
+  const btn = document.getElementById('scanBtn');
+  btn.textContent = '⏳ Scan...';
+  document.getElementById('poiStatus').textContent = 'Recherche en cours...';
+
+  const radius = parseInt(document.getElementById('poiRadiusSlider').value) * 5; // rayon de scan plus large
+  const tags = POI_TYPES.map(p => {
+    const [k,v] = p.tag.split('=');
+    return `node["${k}"="${v}"](around:${radius},${curLat},${curLng});`;
+  }).join('');
+
+  const query = `[out:json][timeout:10];(${tags});out body;`;
+
+  try {
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method:'POST', body: 'data=' + encodeURIComponent(query)
+    });
+    const data = await r.json();
+
+    poiZones = data.elements.map(el => {
+      const type = POI_TYPES.find(p => {
+        const [k,v] = p.tag.split('=');
+        return el.tags?.[k] === v;
+      });
+      const name = el.tags?.name || el.tags?.operator || type?.label || 'POI';
+      return {
+        id: 'poi_' + el.id,
+        isPOI: true,
+        emoji: type?.emoji || '📍',
+        label: type?.label || 'POI',
+        name,
+        lat: el.lat,
+        lng: el.lon,
+        radius: parseInt(document.getElementById('poiRadiusSlider').value),
+        playlists: {}
+      };
+    });
+
+    // Charger les playlists POI sauvegardées
+    const saved = await dbGet('prefs', 'poiPlaylists');
+    if (saved) {
+      const pp = saved.value;
+      for (const pz of poiZones) {
+        if (pp[pz.label]) pz.playlists = await hydratePOIPlaylists(pp[pz.label]);
+      }
+    }
+
+    document.getElementById('poiStatus').textContent = `${poiZones.length} lieu${poiZones.length>1?'x':''} trouvé${poiZones.length>1?'s':''}`;
+    renderPOI();
+  } catch(e) {
+    document.getElementById('poiStatus').textContent = '⚠️ Erreur réseau';
+  }
+  btn.textContent = '🔍 Scanner';
+}
+
+async function hydratePOIPlaylists(playlists) {
+  const out = {};
+  for (const [k, pl] of Object.entries(playlists || {})) {
+    out[k] = await Promise.all(pl.map(async t => {
+      if (t.type === 'file') {
+        const ar = await dbGet('audio', t.id);
+        if (ar) return { ...t, url: URL.createObjectURL(new Blob([ar.data],{type:ar.type})) };
+        return null;
+      }
+      return t;
+    }));
+    out[k] = out[k].filter(Boolean);
+  }
+  return out;
+}
+
+function checkPOI() {
+  if (!curLat || !poiZones.length) return;
+
+  // Trouver le POI le plus proche dans le rayon
+  let closest = null, closestDist = Infinity;
+  for (const pz of poiZones) {
+    const d = dist(curLat, curLng, pz.lat, pz.lng);
+    if (d < pz.radius && d < closestDist) {
+      closestDist = d;
+      closest = pz;
+    }
+  }
+
+  if (closest && closest.id !== curPOI?.id && closest.id !== pendingPOI?.id) {
+    // Nouveau POI détecté — démarrer le timer 15s
+    startPOITimer(closest);
+  } else if (!closest && pendingPOI) {
+    // Sorti du POI avant les 15s
+    cancelPOITimer();
+  } else if (!closest && curPOI) {
+    // Sorti du POI actif
+    curPOI = null;
+  }
+}
+
+function startPOITimer(pz) {
+  cancelPOITimer();
+  pendingPOI = pz;
+
+  toast(`📍 ${pz.emoji} ${pz.name} — attendre 15s...`);
+
+  // Barre de progression
+  const bar = document.getElementById('poiTimerBar');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  setTimeout(() => {
+    bar.style.transition = 'width 15s linear';
+    bar.style.width = '100%';
+  }, 50);
+
+  poiTimer = setTimeout(() => {
+    curPOI = pendingPOI;
+    pendingPOI = null;
+    bar.style.width = '0%';
+    bar.style.transition = 'none';
+    activatePOI(curPOI);
+  }, 15000);
+}
+
+function cancelPOITimer() {
+  if (poiTimer) { clearTimeout(poiTimer); poiTimer = null; }
+  pendingPOI = null;
+  const bar = document.getElementById('poiTimerBar');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+}
+
+function activatePOI(pz) {
+  const pl = getBestPlaylist(pz);
+  if (!pl?.length) {
+    toast(`📍 ${pz.emoji} ${pz.name} — aucune musique configurée`);
+    return;
+  }
+  toast(`🎵 ${pz.emoji} ${pz.name}`);
+  // Jouer sans changer curZone (les zones manuelles ont priorité)
+  if (curZone === -2) {
+    const ti = randTrack(pl.length);
+    const t = pl[ti];
+    document.getElementById('czIcon').textContent = pz.emoji;
+    document.getElementById('czName').textContent = pz.name;
+    document.getElementById('czSub').textContent = `POI · ${pz.label}`;
+    document.getElementById('tn').textContent = t.name;
+    document.getElementById('tn').classList.remove('empty');
+    ap.src = t.url;
+    ap.play().catch(()=>{});
+  }
+  renderPOI();
+}
+
+function renderPOI() {
+  const list = document.getElementById('poiList');
+  if (!poiZones.length) { list.innerHTML = ''; return; }
+
+  list.innerHTML = poiZones.map(pz => {
+    const total = Object.values(pz.playlists||{}).reduce((a,pl)=>a+pl.length,0);
+    const isActive = curPOI?.id === pz.id;
+    const isPending = pendingPOI?.id === pz.id;
+    let d = '';
+    if (curLat) d = ' · ' + Math.round(dist(curLat,curLng,pz.lat,pz.lng)) + 'm';
+    return `<div class="zone-card ${isActive?'active-zone poi-zone':''}">
+      <div class="zone-emoji">${pz.emoji}</div>
+      <div class="zone-details">
+        <div class="zone-name">${pz.name} <span class="poi-badge">${pz.label}</span>${isActive?' 🎵':''}${isPending?' ⏱️':''}</div>
+        <div class="zone-track">${total} musique${total>1?'s':''}${d}</div>
+      </div>
+      <div class="zone-radius-tag">${pz.radius}m</div>
+      <div class="zone-actions">
+        <button class="icon-btn" onclick="openPOIModal('${pz.id}')">🎵</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openPOIModal(id) {
+  const pz = poiZones.find(p => p.id === id);
+  if (!pz) return;
+  // Réutiliser le modal existant
+  openZoneModal(null);
+  setTimeout(() => {
+    document.getElementById('mTitle').textContent = `🎵 ${pz.emoji} ${pz.name}`;
+    document.getElementById('mBasicFields').style.display = 'none';
+    // Stocker l'ID POI pour la sauvegarde
+    document.getElementById('saveBtn').onclick = () => savePOIZone(id);
+    // Copier les playlists existantes
+    for (const [k,v] of Object.entries(pz.playlists||{})) mdPlaylists[k] = [...v];
+    renderCondTabs();
+    renderPlaylistPanel();
+  }, 100);
+}
+
+async function savePOIZone(id) {
+  const pz = poiZones.find(p => p.id === id);
+  if (!pz) return;
+  pz.playlists = { ...mdPlaylists };
+
+  // Sauvegarder par type de POI (label) pour réutiliser sur d'autres lieux similaires
+  const saved = await dbGet('prefs', 'poiPlaylists') || { key:'poiPlaylists', value:{} };
+  const persistPl = {};
+  for (const [k,pl] of Object.entries(mdPlaylists)) {
+    persistPl[k] = pl.map(t => t.type==='file' ? {type:'file',id:t.id,name:t.name} : t);
+  }
+  saved.value[pz.label] = persistPl;
+  await dbPut('prefs', saved);
+
+  // Appliquer aux autres POI du même type
+  for (const other of poiZones) {
+    if (other.label === pz.label && other.id !== id) {
+      other.playlists = await hydratePOIPlaylists(persistPl);
+    }
+  }
+
+  toast(`✅ Musique sauvée pour tous les "${pz.label}" !`);
+  renderPOI();
+  closeModal();
+  document.getElementById('saveBtn').onclick = saveZone;
 }
 
 boot();
