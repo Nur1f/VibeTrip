@@ -235,7 +235,7 @@
       placeholder="mot de passe..."
       style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 16px;color:white;font-family:'Space Mono',monospace;font-size:14px;outline:none;text-align:center;width:200px;margin-top:8px;"
       oninput="checkUnlock(this.value)">
-    <div id="unlockHint" style="font-size:11px;color:rgba(255,255,255,.2);font-family:'Space Mono',monospace;margin-top:6px;">entre le mot de passe pour rallumer</div>
+    <div id="unlockHint" style="font-size:11px;color:rgba(255,255,255,.2);font-family:'Space Mono',monospace;margin-top:6px;">tape "zelda" pour rallumer</div>
   </div>
 
   <div class="context-row">
@@ -1184,7 +1184,7 @@ function toggleScreenOff() {
   // Reset input
   const inp = document.getElementById('unlockInput');
   inp.value = '';
-  document.getElementById('unlockHint').textContent = 'entre le mot de passe pour rallumer';
+  document.getElementById('unlockHint').textContent = 'tape "zelda" pour rallumer';
   document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
   setTimeout(() => inp.focus(), 300);
 }
@@ -1202,7 +1202,7 @@ function checkUnlock(val) {
     document.getElementById('unlockHint').style.color = 'rgba(252,92,125,.8)';
     setTimeout(() => {
       document.getElementById('unlockInput').value = '';
-      document.getElementById('unlockHint').textContent = 'entre le mot de passe pour rallumer';
+      document.getElementById('unlockHint').textContent = 'tape "zelda" pour rallumer';
       document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
     }, 800);
   }
