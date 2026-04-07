@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VibeTrace">
+<link rel="manifest" href="manifest.json">
+<title>VibeTrace</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg:#0a0a0f; --surface:#12121a; --surface2:#1a1a26;
+    --border:#2a2a3f; --accent:#7c5cfc; --accent2:#fc5c7d;
+    --accent3:#5cf8fc; --text:#e8e8f0; --text2:#8888aa;
+    --green:#5cfc8a; --radius:16px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(ellipse 60% 40% at 20% 20%,rgba(124,92,252,.08) 0%,transparent 70%),
+               radial-gradient(ellipse 50% 50% at 80% 80%,rgba(252,92,125,.06) 0%,transparent 70%);}
+  .app{position:relative;z-index:1;max-width:480px;margin:0 auto;padding:24px 16px 120px;}
+
+  /* Loading */
+  .loading-screen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s ease;}
+  .loading-screen.hidden{opacity:0;pointer-events:none;}
+  .loading-logo{font-size:48px;}.loading-title{font-size:28px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .loading-bar{width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+  .loading-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:0;transition:width .4s ease;}
+  .loading-sub{font-size:12px;font-family:'Space Mono',monospace;color:var(--text2);}
+
+  /* Header */
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-top:8px;}
+  .logo{display:flex;align-items:center;gap:10px;}
+  .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .logo-text{font-size:22px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .status-pill{display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;color:var(--text2);background:var(--surface);padding:6px 12px;border-radius:20px;border:1px solid var(--border);}
+  .screen-off-btn{background:var(--surface);border:1px solid var(--border);color:var(--text2);border-radius:20px;padding:6px 12px;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s;}
+  .screen-off-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .screen-off-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(252,92,125,.08);}
+  .screen-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;cursor:pointer;}
+  .screen-overlay.on{display:flex;}
+  .screen-overlay-hint{font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,255,255,.2);text-align:center;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--text2);}
+  .dot.active{background:var(--green);animation:pulse 2s infinite;}
+  .dot.searching{background:#fccc5c;animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+  /* Context bar */
+  .context-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .pill{display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;font-family:'Space Mono',monospace;color:var(--text2);}
+  .pill span{font-size:14px;}
+  .coords{font-family:'Space Mono',monospace;font-size:10px;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;}
+  .coords b{color:var(--accent3);font-weight:400;}
+
+  /* Weather / condition pill */
+  .condition-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .cond-pill{display:flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);}
+  .cond-pill.highlight{border-color:var(--accent3);color:var(--accent3);}
+
+  /* Now Playing */
+  .now-playing{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid var(--border);border-radius:24px;padding:20px;margin-bottom:20px;position:relative;overflow:hidden;}
+  .now-playing::before{content:'';position:absolute;top:-50%;right:-30%;width:200px;height:200px;background:radial-gradient(circle,rgba(124,92,252,.12),transparent 70%);pointer-events:none;}
+  .np-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--text2);text-transform:uppercase;margin-bottom:12px;}
+  .np-zone{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .zone-icon{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;transition:all .5s;}
+  .zone-info h2{font-size:20px;font-weight:700;margin-bottom:2px;}
+  .zone-info p{font-size:12px;color:var(--text2);font-family:'Space Mono',monospace;}
+  .active-cond-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(92,248,252,.12);border:1px solid var(--accent3);border-radius:12px;padding:2px 8px;font-size:10px;font-family:'Space Mono',monospace;color:var(--accent3);margin-top:4px;}
+  .waveform{display:flex;align-items:center;gap:3px;height:32px;margin-bottom:16px;}
+  .wave-bar{width:3px;border-radius:2px;background:linear-gradient(to top,var(--accent),var(--accent3));animation:wave 1.2s ease-in-out infinite;height:8px;}
+  .wave-bar:nth-child(1){animation-delay:0s}.wave-bar:nth-child(2){animation-delay:.1s}.wave-bar:nth-child(3){animation-delay:.2s}
+  .wave-bar:nth-child(4){animation-delay:.3s}.wave-bar:nth-child(5){animation-delay:.4s}.wave-bar:nth-child(6){animation-delay:.3s}
+  .wave-bar:nth-child(7){animation-delay:.2s}.wave-bar:nth-child(8){animation-delay:.1s}.wave-bar:nth-child(9){animation-delay:0s}
+  .wave-bar:nth-child(10){animation-delay:.15s}.wave-bar:nth-child(11){animation-delay:.25s}.wave-bar:nth-child(12){animation-delay:.35s}
+  @keyframes wave{0%,100%{height:6px}50%{height:28px}}
+  .waveform.paused .wave-bar{animation-play-state:paused;height:8px!important;}
+  .track-name{font-size:15px;font-weight:600;margin-bottom:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .track-name.empty{color:var(--text2);font-style:italic;font-weight:400;}
+  .controls{display:flex;align-items:center;justify-content:center;gap:16px;}
+  .ctrl-btn{background:none;border:1px solid var(--border);color:var(--text);cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:18px;}
+  .ctrl-btn:hover{background:var(--surface2);border-color:var(--accent);}
+  .ctrl-btn.sm{width:40px;height:40px;font-size:16px;}
+  .ctrl-btn.lg{width:56px;height:56px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;font-size:22px;}
+  .ctrl-btn.lg:hover{transform:scale(1.05);filter:brightness(1.1);}
+  .volume-row{display:flex;align-items:center;gap:10px;margin-top:16px;}
+  .volume-row span{font-size:14px;color:var(--text2);}
+  input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--border);outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;}
+
+  /* YouTube player hidden */
+  #ytContainer{position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;}
+
+  /* Zones list */
+  .section-title{font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);font-family:'Space Mono',monospace;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+  .add-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;cursor:pointer;border-radius:8px;padding:5px 12px;font-size:12px;font-family:'Syne',sans-serif;font-weight:600;transition:all .2s;}
+  .add-btn:hover{transform:scale(1.03);filter:brightness(1.1);}
+  .zones-list{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+  .zone-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .3s;position:relative;overflow:hidden;}
+  .zone-card.active-zone{border-color:var(--accent);background:rgba(124,92,252,.06);}
+  .zone-card.active-zone::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(to bottom,var(--accent),var(--accent2));}
+  .zone-emoji{font-size:24px;width:44px;height:44px;background:var(--surface2);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .zone-details{flex:1;min-width:0;}
+  .zone-name{font-size:15px;font-weight:600;margin-bottom:2px;}
+  .zone-track{font-size:11px;color:var(--text2);font-family:'Space Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .zone-radius-tag{font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);background:var(--surface2);padding:3px 8px;border-radius:6px;flex-shrink:0;}
+  .zone-actions{display:flex;gap:6px;}
+  .icon-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s;}
+  .icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .icon-btn.danger:hover{border-color:var(--accent2);color:var(--accent2);}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .modal-overlay.open{opacity:1;pointer-events:all;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:24px 24px 0 0;padding:24px 20px 48px;width:100%;max-width:480px;transform:translateY(100%);transition:transform .4s cubic-bezier(.34,1.56,.64,1);max-height:92vh;overflow-y:auto;}
+  .modal-overlay.open .modal{transform:translateY(0);}
+  .modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;}
+  .modal h3{font-size:20px;font-weight:700;margin-bottom:16px;}
+  .form-group{margin-bottom:14px;}
+  .form-group label{display:block;font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+  .form-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;transition:border-color .2s;}
+  .form-input:focus{border-color:var(--accent);}
+  .emoji-grid{display:flex;gap:8px;flex-wrap:wrap;}
+  .emoji-opt{width:40px;height:40px;background:var(--bg);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all .2s;}
+  .emoji-opt.selected,.emoji-opt:hover{border-color:var(--accent);background:rgba(124,92,252,.12);}
+  .gps-btn{width:100%;background:linear-gradient(135deg,rgba(124,92,252,.15),rgba(252,92,125,.15));border:1px solid var(--accent);color:var(--accent);padding:11px;border-radius:10px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;}
+  .gps-btn:hover{background:rgba(124,92,252,.2);}
+  .radius-display{font-family:'Space Mono',monospace;font-size:13px;color:var(--accent);text-align:right;margin-top:4px;}
+  .modal-actions{display:flex;gap:10px;margin-top:20px;}
+  .btn-cancel{flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:13px;border-radius:12px;font-family:'Syne',sans-serif;font-size:15px;font-weight:600;cursor:pointer;}
+  .btn-save{flex:2;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;padding:13px;border-radius:12px;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;}
+  .btn-save:hover{filter:brightness(1.1);}
+
+  /* Playlist conditions */
+  .cond-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+  .cond-tab{padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);cursor:pointer;transition:all .2s;white-space:nowrap;}
+  .cond-tab.active{border-color:var(--accent);color:var(--accent);background:rgba(124,92,252,.12);}
+  .cond-tab.has-tracks{border-color:var(--green);color:var(--green);}
+  .cond-tab.active.has-tracks{background:rgba(92,252,138,.1);}
+  .playlist-panel{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;}
+  .playlist-panel .pl-title{font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+  .track-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;font-family:'Space Mono',monospace;color:var(--text2);}
+  .track-item:last-child{border-bottom:none;}
+  .ti-num{color:var(--accent);width:16px;font-size:11px;flex-shrink:0;}
+  .ti-type{font-size:10px;padding:2px 6px;border-radius:4px;flex-shrink:0;}
+  .ti-type.yt{background:rgba(252,92,125,.15);color:var(--accent2);}
+  .ti-type.file{background:rgba(92,252,138,.15);color:var(--green);}
+  .ti-del{margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;}
+  .ti-del:hover{color:var(--accent2);}
+  .add-track-row{display:flex;gap:8px;margin-top:10px;}
+  .add-track-row .form-input{flex:1;padding:9px 12px;font-size:13px;}
+  .add-track-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer;white-space:nowrap;}
+  .file-add-btn{background:var(--surface2);border:1px dashed var(--border);border-radius:10px;padding:9px 12px;font-size:12px;font-family:'Space Mono',monospace;color:var(--text2);cursor:pointer;text-align:center;transition:all .2s;position:relative;margin-top:8px;width:100%;}
+  .file-add-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .file-add-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+
+  /* Map */
+  .map-tabs{display:flex;gap:8px;margin-bottom:8px;}
+  .map-tab{flex:1;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;text-align:center;transition:all .2s;}
+  .map-tab.active{border-color:var(--accent);color:var(--accent);background:rgba(124,92,252,.12);}
+  .map-container{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-top:8px;}
+  #zoneMap{height:200px;width:100%;background:var(--surface2);}
+  .map-tip{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(10,10,15,.85);border:1px solid var(--accent);color:var(--accent);font-family:'Space Mono',monospace;font-size:10px;padding:4px 10px;border-radius:20px;white-space:nowrap;pointer-events:none;transition:opacity .3s;}
+  .map-tip.hidden{opacity:0;}
+  .search-input-wrap{position:relative;}
+  .map-search{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 36px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;transition:border-color .2s;}
+  .map-search:focus{border-color:var(--accent);}
+  .map-search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;}
+  .search-results{position:absolute;z-index:2000;background:var(--surface);border:1px solid var(--border);border-radius:10px;width:100%;top:calc(100% + 4px);max-height:150px;overflow-y:auto;}
+  .search-result-item{padding:9px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s;}
+  .search-result-item:last-child{border-bottom:none;}
+  .search-result-item:hover{background:var(--surface2);color:var(--accent);}
+
+  /* Toast / Flash */
+  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 20px;font-size:13px;font-family:'Space Mono',monospace;color:var(--text);opacity:0;transition:all .3s;white-space:nowrap;z-index:300;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .empty-state{text-align:center;padding:28px 16px;background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);color:var(--text2);}
+  .empty-state .ei{font-size:36px;margin-bottom:10px;}
+  .empty-state p{font-size:14px;line-height:1.5;}
+  .flash{position:fixed;inset:0;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;pointer-events:none;z-index:50;transition:opacity .3s;}
+  .flash.on{opacity:.15;}
+  /* POI timer bar */
+  .poi-timer-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent3),var(--accent));z-index:200;transition:width 1s linear;width:0;}
+  .zone-card.poi-zone{border-color:var(--accent3);}
+  .zone-card.poi-zone::before{background:linear-gradient(to bottom,var(--accent3),var(--accent));}
+  .poi-badge{font-size:10px;font-family:'Space Mono',monospace;background:rgba(92,248,252,.12);border:1px solid var(--accent3);color:var(--accent3);border-radius:6px;padding:2px 6px;margin-left:4px;}
+  .flash.on{opacity:.15;}
+
+  /* POI category cards */
+  .poi-cat-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+  .poi-cat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .3s;position:relative;overflow:hidden;cursor:pointer;}
+  .poi-cat-card:hover{border-color:var(--accent);background:rgba(124,92,252,.04);}
+  .poi-cat-card.active-zone{border-color:var(--accent3);background:rgba(92,248,252,.06);}
+  .poi-cat-card.active-zone::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(to bottom,var(--accent3),var(--accent));}
+  .poi-cat-card.has-music{border-color:var(--green);}
+  .poi-cat-card.has-music::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);}
+  .poi-cat-card.active-zone.has-music{border-color:var(--accent3);}
+  .poi-cat-card.active-zone.has-music::before{background:linear-gradient(to bottom,var(--accent3),var(--accent));}
+  .poi-cat-toggle{width:36px;height:20px;background:var(--border);border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;}
+  .poi-cat-toggle.on{background:var(--accent);}
+  .poi-cat-toggle::after{content:'';position:absolute;width:14px;height:14px;background:white;border-radius:50%;top:3px;left:3px;transition:transform .2s;}
+  .poi-cat-toggle.on::after{transform:translateX(16px);}
+  /* POI timer bar */
+  .poi-timer-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent3),var(--accent));z-index:200;transition:width 1s linear;width:0;}
+  .poi-badge{font-size:10px;font-family:'Space Mono',monospace;background:rgba(92,248,252,.12);border:1px solid var(--accent3);color:var(--accent3);border-radius:6px;padding:2px 6px;margin-left:4px;}
+  #extZoneCard.active-zone{border-color:var(--accent3);background:rgba(92,248,252,.06);}
+  #extZoneCard.active-zone::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(to bottom,var(--accent3),var(--accent));}
+
+  /* OWM key prompt */
+  .api-key-row{display:flex;gap:8px;margin-bottom:16px;align-items:center;}
+  .api-key-row .form-input{flex:1;padding:8px 12px;font-size:12px;}
+  .api-key-row button{background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
+  .api-key-row button:hover{border-color:var(--accent);color:var(--accent);}
+  .owm-note{font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);margin-bottom:12px;line-height:1.5;}
+  .owm-note a{color:var(--accent);text-decoration:none;}
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="ls">
+  <div class="loading-logo">🎮</div>
+  <div class="loading-title">VibeTrace</div>
+  <div class="loading-bar"><div class="loading-fill" id="lf"></div></div>
+  <div class="loading-sub" id="lt">Initialisation...</div>
+</div>
+
+<div class="flash" id="flash"></div>
+<div class="poi-timer-bar" id="poiTimerBar"></div>
+<div class="toast" id="toast"></div>
+
+<!-- YouTube hidden player -->
+<div id="ytContainer"><div id="ytPlayer"></div></div>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🎮</div>
+      <div class="logo-text">VibeTrace</div>
+    </div>
+    <div class="status-pill">
+      <div class="dot" id="sdot"></div>
+      <span id="stxt">inactif</span>
+    </div>
+    <button class="screen-off-btn" id="screenOffBtn" onclick="toggleScreenOff()">📴 Écran off</button>
+  </div>
+
+  <!-- Overlay écran éteint -->
+  <div class="screen-overlay" id="screenOverlay">
+    <div style="font-size:32px">📴</div>
+    <div class="screen-overlay-hint">🎵 VibeTrace tourne en arrière-plan</div>
+    <input id="unlockInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      placeholder="mot de passe..."
+      style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 16px;color:white;font-family:'Space Mono',monospace;font-size:14px;outline:none;text-align:center;width:200px;margin-top:8px;"
+      oninput="checkUnlock(this.value)">
+    <div id="unlockHint" style="font-size:11px;color:rgba(255,255,255,.2);font-family:'Space Mono',monospace;margin-top:6px;">tape "zelda" pour rallumer</div>
+  </div>
+
+  <div class="context-row">
+    <div class="pill"><span id="ti">🕐</span>&nbsp;<span id="tt">--</span></div>
+    <div class="pill"><span id="si">🧍</span>&nbsp;<span id="st">immobile</span></div>
+  </div>
+
+  <div class="condition-bar">
+    <div class="cond-pill" id="cpDayNight">🌙 nuit</div>
+    <div class="cond-pill" id="cpWeather">⏳ météo...</div>
+    <div class="cond-pill" id="cpActive" style="display:none">🎵 <span id="cpActiveTxt">--</span></div>
+  </div>
+
+  <div class="coords">
+    📍&nbsp;<b id="latD">lat: --</b>&nbsp;&nbsp;<b id="lngD">lng: --</b>&nbsp;&nbsp;<b id="accD">précision: --</b>
+  </div>
+
+  <div class="now-playing">
+    <div class="np-label">▶ EN COURS</div>
+    <div class="np-zone">
+      <div class="zone-icon" id="czIcon">🎮</div>
+      <div class="zone-info">
+        <h2 id="czName">Aucune zone</h2>
+        <p id="czSub">Définissez des zones ci-dessous</p>
+        <div class="active-cond-badge" id="czCondBadge" style="display:none"></div>
+      </div>
+    </div>
+    <div class="waveform paused" id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="track-name empty" id="tn">Aucune musique</div>
+    <div class="controls">
+      <button class="ctrl-btn sm" onclick="skip(-1)">⏮</button>
+      <button class="ctrl-btn lg" id="ppBtn" onclick="togglePlay()">▶</button>
+      <button class="ctrl-btn sm" onclick="skip(1)">⏭</button>
+    </div>
+    <div class="volume-row">
+      <span>🔈</span>
+      <input type="range" min="0" max="100" value="80" id="vol" oninput="setVol(this.value)">
+      <span>🔊</span>
+    </div>
+  </div>
+
+  <div class="section-title">Zone Extérieur <button class="add-btn" onclick="openZoneModal('__exterior__')">⚙️ Configurer</button></div>
+  <div class="zones-list" id="extZoneList">
+    <div class="zone-card" id="extZoneCard">
+      <div class="zone-emoji" id="extZoneEmoji">🌍</div>
+      <div class="zone-details">
+        <div class="zone-name" id="extZoneName">Extérieur <span style="font-size:11px;color:var(--text2);font-family:'Space Mono',monospace">(zone par défaut)</span></div>
+        <div class="zone-track" id="extZoneTrack">0 playlist — active hors de toute zone</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Mes zones <button class="add-btn" onclick="openZoneModal()">+ Ajouter</button></div>
+  <div class="zones-list" id="zl"></div>
+
+  <!-- Points d'intérêt — règles globales par catégorie -->
+  <div class="section-title" style="margin-top:8px">
+    Lieux automatiques <span style="font-weight:400;font-size:10px;color:var(--text2)">(par catégorie)</span>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;">
+    <p style="font-size:11px;font-family:'Space Mono',monospace;color:var(--text2);line-height:1.6;margin-bottom:12px;">
+      Configure une playlist pour chaque <b style="color:var(--accent)">type de lieu</b>. Elle se déclenche automatiquement dans <b style="color:var(--accent)">n'importe quel</b> fast-food, arrêt de bus, parc… sans avoir à y aller.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+      <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--text2)">Rayon détection :</span>
+      <input type="range" min="5" max="150" value="30" id="poiRadiusSlider" oninput="document.getElementById('poiRadiusVal').textContent=this.value+'m';savePOIRadius(this.value)" style="flex:1">
+      <span style="font-size:12px;font-family:'Space Mono',monospace;color:var(--accent)" id="poiRadiusVal">30m</span>
+    </div>
+    <p style="font-size:10px;font-family:'Space Mono',monospace;color:var(--text2);margin-bottom:10px;">La musique se lance après <b style="color:var(--accent3)">15 secondes</b> dans la zone. Les zones manuelles ont toujours priorité.</p>
+    <div id="poiStatus" style="font-size:11px;font-family:'Space Mono',monospace;color:var(--text2)"></div>
+  </div>
+  <div id="poiCatList"></div>
+
+  <!-- OWM API key -->
+  <div class="section-title" style="margin-top:8px">Météo <span style="font-weight:400;font-size:10px;color:var(--text2)">(OpenWeatherMap)</span></div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:20px;">
+    <p class="owm-note">Clé API gratuite sur <a href="https://openweathermap.org/api" target="_blank">openweathermap.org</a> (plan Free suffit). Sans clé, seul jour/nuit fonctionne.</p>
+    <div class="api-key-row">
+      <input class="form-input" type="text" id="owmKey" placeholder="Colle ta clé OWM ici...">
+      <button onclick="saveOwmKey()">💾 Sauver</button>
+    </div>
+    <div id="owmStatus" style="font-size:11px;font-family:'Space Mono',monospace;color:var(--text2)"></div>
+  </div>
+</div>
+
+<!-- Zone Modal -->
+<div class="modal-overlay" id="mo" onclick="outsideClose(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="mTitle">Nouvelle zone</h3>
+
+    <!-- Emoji + Name (hidden for exterior) -->
+    <div id="mBasicFields">
+      <div class="form-group">
+        <label>Icône</label>
+        <div class="emoji-grid">
+          <div class="emoji-opt selected" onclick="pickEmoji(this,'🏠')">🏠</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🌳')">🌳</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🏪')">🏪</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🏋️')">🏋️</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🏫')">🏫</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🚉')">🚉</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🍕')">🍕</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🏖️')">🏖️</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🌙')">🌙</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'⭐')">⭐</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🌍')">🌍</div>
+          <div class="emoji-opt" onclick="pickEmoji(this,'🎧')">🎧</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Nom de la zone</label>
+        <input class="form-input" type="text" id="zName" placeholder="ex: Maison, Boulot...">
+      </div>
+      <!-- Map / GPS -->
+      <div class="form-group">
+        <label>Position GPS</label>
+        <div class="map-tabs">
+          <div class="map-tab active" id="tabMap" onclick="switchPosTab('map')">🗺️ Carte</div>
+          <div class="map-tab" id="tabGPS" onclick="switchPosTab('gps')">📍 Ma position</div>
+        </div>
+        <div id="mapPosPanel">
+          <div class="search-input-wrap" style="margin-bottom:8px;position:relative">
+            <span class="map-search-icon">🔍</span>
+            <input class="map-search" type="text" id="mapSearchInput" placeholder="Rechercher un lieu..." oninput="debounceSearch(this.value)" autocomplete="off">
+            <div class="search-results" id="searchResults" style="display:none"></div>
+          </div>
+          <div class="map-container">
+            <div class="map-tip" id="mapTip">👆 Clique pour placer la zone</div>
+            <div id="zoneMap"></div>
+          </div>
+        </div>
+        <div id="gpsPosPanel" style="display:none">
+          <button class="gps-btn" onclick="capturePos()">📍 Capturer ma position actuelle</button>
+        </div>
+        <div style="margin-top:8px;font-size:12px;font-family:'Space Mono',monospace;color:var(--text2)" id="posLabel">Aucune position capturée</div>
+      </div>
+      <div class="form-group">
+        <label>Rayon de détection</label>
+        <input type="range" min="20" max="500" value="50" id="radSlider" oninput="updateRad(this.value)" style="width:100%">
+        <div class="radius-display" id="radDisplay">50 mètres</div>
+      </div>
+    </div>
+
+    <!-- Conditional Playlists -->
+    <div class="form-group">
+      <label>Playlists par condition</label>
+      <div class="cond-tabs" id="condTabs"></div>
+      <div class="playlist-panel" id="playlistPanel"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+      <button class="btn-save" id="saveBtn" onclick="saveZone()">💾 Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<audio id="ap" style="display:none"></audio>
+
+<script>
+// ============================================================
+// CONDITIONS
+// condition key = "day|night" + "|" + "clear|rain|snow|cloud|any"
+// Priorité de fallback : exact → même heure/any météo → any/any
+// ============================================================
+const CONDITIONS = [
+  { key:'day|any',   label:'☀️ Jour',         icon:'☀️', dn:'day',   wx:'any'   },
+  { key:'night|any', label:'🌙 Nuit',          icon:'🌙', dn:'night', wx:'any'   },
+  { key:'day|rain',  label:'🌧️ Jour + Pluie', icon:'🌧️', dn:'day',   wx:'rain'  },
+  { key:'night|rain',label:'⛈️ Nuit + Pluie', icon:'⛈️', dn:'night', wx:'rain'  },
+  { key:'day|snow',  label:'❄️ Jour + Neige', icon:'❄️', dn:'day',   wx:'snow'  },
+  { key:'night|snow',label:'🌨️ Nuit + Neige', icon:'🌨️', dn:'night', wx:'snow'  },
+  { key:'day|cloud', label:'⛅ Jour + Nuageux',icon:'⛅', dn:'day',   wx:'cloud' },
+  { key:'night|cloud',label:'🌥️ Nuit + Nuages',icon:'🌥️',dn:'night', wx:'cloud' },
+];
+
+function getFallbackOrder(dn, wx) {
+  // Most specific first, then fallbacks
+  const order = [];
+  if (wx !== 'any') order.push(`${dn}|${wx}`);
+  order.push(`${dn}|any`);
+  if (wx !== 'any') order.push(`${dn === 'day' ? 'night' : 'day'}|${wx}`);
+  order.push('day|any');
+  order.push('night|any');
+  return order;
+}
+
+// ============================================================
+// IndexedDB
+// ============================================================
+let db;
+function openDB() {
+  return new Promise((res,rej) => {
+    const r = indexedDB.open('VibeTraceDB', 3);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('zones')) d.createObjectStore('zones',{keyPath:'id'});
+      if (!d.objectStoreNames.contains('audio')) d.createObjectStore('audio',{keyPath:'id'});
+      if (!d.objectStoreNames.contains('prefs')) d.createObjectStore('prefs',{keyPath:'key'});
+    };
+    r.onsuccess = e => { db=e.target.result; res(db); };
+    r.onerror = () => rej(r.error);
+  });
+}
+const tx=(s,m='readonly')=>db.transaction(s,m).objectStore(s);
+const dbGet=(s,k)=>new Promise((res,rej)=>{const r=tx(s).get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const dbGetAll=s=>new Promise((res,rej)=>{const r=tx(s).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const dbPut=(s,v)=>new Promise((res,rej)=>{const r=tx(s,'readwrite').put(v);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});
+const dbDel=(s,k)=>new Promise((res,rej)=>{const r=tx(s,'readwrite').delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});
+
+// ============================================================
+// State
+// Zone structure: { id, emoji, name, lat, lng, radius, playlists: { [condKey]: [{type:'file'|'yt', id, name, url?, ytId?}] } }
+// ============================================================
+let zones = [];
+let exteriorZone = { id:'__exterior__', emoji:'🌍', name:'Extérieur', lat:null, lng:null, radius:0, playlists:{}, isExterior:true };
+let curZone = -1, trackIdx = 0;
+let curLat = null, curLng = null, curSpd = 0;
+let curDN = 'day', curWX = 'any';
+let owmKey = '';
+let md = {};
+const ap = document.getElementById('ap');
+
+// ============================================================
+// BOOT
+// ============================================================
+async function boot() {
+  progress('Ouverture DB...', 20);
+  await openDB();
+  progress('Chargement des zones...', 50);
+
+  const raw = await dbGetAll('zones');
+  raw.sort((a,b) => a.order - b.order);
+
+  for (const z of raw) {
+    if (z.id === '__exterior__') {
+      exteriorZone = await hydrateZone(z);
+      exteriorZone.isExterior = true;
+    } else {
+      zones.push(await hydrateZone(z));
+    }
+  }
+
+  progress('Préférences...', 85);
+  const vp = await dbGet('prefs','volume');
+  if (vp) { document.getElementById('vol').value=vp.value; ap.volume=vp.value/100; }
+  const kp = await dbGet('prefs','owmKey');
+  if (kp) { owmKey=kp.value; document.getElementById('owmKey').value=owmKey; }
+
+  progress('Prêt !', 100);
+  setTimeout(()=>document.getElementById('ls').classList.add('hidden'),400);
+  await loadPOIRules();
+  render();
+  startGPS();
+  updateDayNight();
+  setInterval(updateDayNight, 60000);
+  fetchWeather();
+  setInterval(fetchWeather, 600000); // refresh every 10min
+}
+
+async function hydrateZone(z) {
+  // z.playlists: { condKey: [{type, id, name, ytId?}] }
+  const out = { ...z, playlists: z.playlists || {} };
+  // load file blobs
+  for (const key of Object.keys(out.playlists)) {
+    out.playlists[key] = await Promise.all(out.playlists[key].map(async t => {
+      if (t.type === 'file') {
+        const ar = await dbGet('audio', t.id);
+        if (ar) return { ...t, url: URL.createObjectURL(new Blob([ar.data],{type:ar.type})) };
+        return null;
+      }
+      return t; // yt tracks have ytId
+    }));
+    out.playlists[key] = out.playlists[key].filter(Boolean);
+  }
+  return out;
+}
+
+function progress(txt,pct) {
+  document.getElementById('lt').textContent=txt;
+  document.getElementById('lf').style.width=pct+'%';
+}
+
+// ============================================================
+// WEATHER
+// ============================================================
+async function fetchWeather() {
+  if (!owmKey || !curLat) return;
+  try {
+    const r = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${curLat}&lon=${curLng}&appid=${owmKey}`);
+    const d = await r.json();
+    if (d.cod !== 200) { document.getElementById('owmStatus').textContent='❌ Clé invalide'; return; }
+    const id = d.weather[0].id;
+    let wx = 'any';
+    if (id >= 200 && id < 700) wx = 'rain'; // storm/drizzle/rain
+    if (id >= 600 && id < 700) wx = 'snow';
+    if (id >= 801) wx = 'cloud';
+    if (id === 800) wx = 'clear';
+    const prev = curWX;
+    curWX = wx;
+    document.getElementById('owmStatus').textContent='✅ Météo OK · '+d.weather[0].description;
+    updateWeatherPill();
+    if (prev !== curWX) recheckCondition();
+  } catch(e) { document.getElementById('owmStatus').textContent='⚠️ Erreur réseau météo'; }
+}
+
+async function saveOwmKey() {
+  owmKey = document.getElementById('owmKey').value.trim();
+  await dbPut('prefs',{key:'owmKey', value:owmKey});
+  toast('✅ Clé sauvée !');
+  fetchWeather();
+}
+
+function updateWeatherPill() {
+  const icons = {any:'🌤️',clear:'☀️',rain:'🌧️',snow:'❄️',cloud:'⛅'};
+  const labels = {any:'météo',clear:'clair',rain:'pluie',snow:'neige',cloud:'nuageux'};
+  const el = document.getElementById('cpWeather');
+  el.textContent = (icons[curWX]||'🌤️')+' '+(labels[curWX]||'—');
+  el.className = 'cond-pill' + (curWX!=='any'?' highlight':'');
+}
+
+// ============================================================
+// DAY / NIGHT
+// ============================================================
+function updateDayNight() {
+  const h = new Date().getHours();
+  const prev = curDN;
+  const [l,ic] = h>=6&&h<12?['matin','🌅']:h>=12&&h<18?['après-midi','☀️']:h>=18&&h<22?['soir','🌆']:['nuit','🌙'];
+  curDN = (h>=7&&h<21) ? 'day' : 'night';
+  document.getElementById('tt').textContent=l;
+  document.getElementById('ti').textContent=ic;
+  const el = document.getElementById('cpDayNight');
+  el.textContent = curDN==='day'?'☀️ jour':'🌙 nuit';
+  el.className = 'cond-pill highlight';
+  if (prev !== curDN) recheckCondition();
+}
+
+function recheckCondition() {
+  if (curZone === -1) return;
+  const z = curZone === -2 ? exteriorZone : zones[curZone];
+  if (!z) return;
+  const newPl = getBestPlaylist(z);
+  if (!newPl?.length) return;
+  trackIdx = 0;
+  playZone();
+}
+
+// ============================================================
+// GPS
+// ============================================================
+function startGPS() {
+  if (!navigator.geolocation) { toast('GPS non supporté'); return; }
+  setStatus('searching','localisation...');
+  navigator.geolocation.watchPosition(pos => {
+    const firstFix = curLat === null;
+    curLat=pos.coords.latitude; curLng=pos.coords.longitude; curSpd=pos.coords.speed||0;
+    document.getElementById('latD').textContent='lat: '+curLat.toFixed(5);
+    document.getElementById('lngD').textContent='lng: '+curLng.toFixed(5);
+    document.getElementById('accD').textContent='±'+Math.round(pos.coords.accuracy)+'m';
+    setStatus('active','GPS actif');
+    updateSpeed(curSpd);
+    checkZones();
+    checkPOI();
+    if (firstFix && owmKey) fetchWeather();
+  }, ()=>{ setStatus('','GPS refusé'); toast('⚠️ Autorise le GPS'); },
+  {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
+}
+
+function dist(a,b,c,d) {
+  const R=6371000,dL=(c-a)*Math.PI/180,dG=(d-b)*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dG/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function checkZones() {
+  if (curLat===null) return;
+  let best=-1, bestD=Infinity;
+  zones.forEach((z,i)=>{
+    if (z.lat===null) return;
+    const d=dist(curLat,curLng,z.lat,z.lng);
+    if (d<z.radius&&d<bestD){bestD=d;best=i;}
+  });
+  const target = best===-1 ? -2 : best;
+  if (target!==curZone) switchZone(target);
+  render();
+}
+
+// ============================================================
+// PLAYBACK — condition-aware
+// ============================================================
+function getBestPlaylist(z) {
+  const fallbacks = getFallbackOrder(curDN, curWX);
+  for (const key of fallbacks) {
+    const pl = z.playlists?.[key];
+    if (pl?.length) return pl;
+  }
+  return null;
+}
+
+function switchZone(n) {
+  if (n===curZone) return;
+  document.getElementById('flash').classList.add('on');
+  setTimeout(()=>document.getElementById('flash').classList.remove('on'),300);
+  curZone=n; trackIdx=0;
+  stopAll();
+  if (n===-2) {
+    updateNowPlayingUI(exteriorZone);
+    const pl = getBestPlaylist(exteriorZone);
+    if (pl?.length) { toast('🌍 Zone Extérieur'); playZone(); }
+    return;
+  }
+  if (n===-1) {
+    document.getElementById('czIcon').textContent='🎮';
+    document.getElementById('czName').textContent='Hors zone';
+    document.getElementById('czSub').textContent='Aucune zone détectée';
+    document.getElementById('tn').textContent='Aucune musique';
+    document.getElementById('tn').classList.add('empty');
+    document.getElementById('czCondBadge').style.display='none';
+    return;
+  }
+  toast('📍 '+zones[n].emoji+' '+zones[n].name);
+  playZone();
+}
+
+function updateNowPlayingUI(z) {
+  document.getElementById('czIcon').textContent=z.emoji;
+  document.getElementById('czName').textContent=z.name;
+  document.getElementById('czSub').textContent=z.isExterior?'Zone par défaut':'Rayon : '+z.radius+'m';
+}
+
+function playZone() {
+  const z = curZone===-2 ? exteriorZone : (curZone===-1 ? null : zones[curZone]);
+  if (!z) return;
+  updateNowPlayingUI(z);
+
+  const pl = getBestPlaylist(z);
+  if (!pl?.length) {
+    document.getElementById('tn').textContent='Aucune musique pour cette condition';
+    document.getElementById('tn').classList.add('empty');
+    document.getElementById('czCondBadge').style.display='none';
+    return;
+  }
+
+  // Show which condition is active
+  const usedKey = (() => {
+    for (const k of getFallbackOrder(curDN,curWX)) {
+      if (z.playlists?.[k]?.length) return k;
+    }
+    return null;
+  })();
+  const cond = CONDITIONS.find(c=>c.key===usedKey);
+  if (cond) {
+    const badge = document.getElementById('czCondBadge');
+    badge.textContent = cond.icon+' '+cond.label;
+    badge.style.display='inline-flex';
+    document.getElementById('cpActive').style.display='flex';
+    document.getElementById('cpActiveTxt').textContent=cond.label;
+  }
+
+  if (trackIdx>=pl.length) trackIdx=0;
+  const t=pl[trackIdx];
+  document.getElementById('tn').textContent=t.name;
+  document.getElementById('tn').classList.remove('empty');
+
+  if (t.type==='yt') {
+    ap.pause(); ap.src='';
+    playYT(t.ytId, t.name, z.name);
+  } else {
+    stopYT();
+    ap.src=t.url;
+    ap.play().catch(()=>toast('Appuie sur ▶ pour démarrer'));
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata=new MediaMetadata({title:t.name,artist:z.name,album:'VibeTrace 🎮'});
+      navigator.mediaSession.playbackState='playing';
+    }
+  }
+}
+
+function skip(d) {
+  if (curZone===-1) return;
+  const z=curZone===-2?exteriorZone:zones[curZone];
+  const pl=getBestPlaylist(z);
+  if (!pl?.length) return;
+  trackIdx=(trackIdx+d+pl.length)%pl.length;
+  playZone();
+}
+
+function togglePlay() {
+  if (ytPlaying) { ytPaused ? resumeYT() : pauseYT(); return; }
+  if (ap.paused) { if (!ap.src&&curZone!==-1) playZone(); else ap.play(); }
+  else ap.pause();
+}
+
+function setVol(v) {
+  ap.volume=v/100;
+  if (ytPlayer?.setVolume) ytPlayer.setVolume(parseInt(v));
+  dbPut('prefs',{key:'volume',value:parseInt(v)});
+}
+
+function stopAll() {
+  ap.pause(); ap.src='';
+  stopYT();
+  document.getElementById('waveform').classList.add('paused');
+  document.getElementById('ppBtn').textContent='▶';
+}
+
+ap.addEventListener('ended',()=>skip(1));
+ap.addEventListener('play',()=>{document.getElementById('ppBtn').textContent='⏸';document.getElementById('waveform').classList.remove('paused');});
+ap.addEventListener('pause',()=>{document.getElementById('ppBtn').textContent='▶';document.getElementById('waveform').classList.add('paused');});
+
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play',()=>togglePlay());
+  navigator.mediaSession.setActionHandler('pause',()=>togglePlay());
+  navigator.mediaSession.setActionHandler('previoustrack',()=>skip(-1));
+  navigator.mediaSession.setActionHandler('nexttrack',()=>skip(1));
+}
+
+// ============================================================
+// YOUTUBE PLAYER
+// ============================================================
+let ytPlayer = null, ytPlaying = false, ytPaused = false, ytReadyCb = null;
+
+function loadYTApi() {
+  if (window.YT) return;
+  const s=document.createElement('script');
+  s.src='https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+}
+
+window.onYouTubeIframeAPIReady = function() {
+  ytPlayer = new YT.Player('ytPlayer', {
+    height:'1', width:'1',
+    playerVars:{autoplay:0,controls:0,playsinline:1},
+    events:{
+      onReady: () => { if (ytReadyCb) { ytReadyCb(); ytReadyCb=null; } },
+      onStateChange: e => {
+        if (e.data===YT.PlayerState.PLAYING) {
+          ytPlaying=true; ytPaused=false;
+          document.getElementById('ppBtn').textContent='⏸';
+          document.getElementById('waveform').classList.remove('paused');
+        }
+        if (e.data===YT.PlayerState.PAUSED) { ytPaused=true; document.getElementById('ppBtn').textContent='▶'; document.getElementById('waveform').classList.add('paused'); }
+        if (e.data===YT.PlayerState.ENDED) { ytPlaying=false; skip(1); }
+      }
+    }
+  });
+};
+
+function extractYTId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function playYT(id, name, zone) {
+  const vol = parseInt(document.getElementById('vol').value);
+  const doPlay = () => {
+    ytPlayer.loadVideoById(id);
+    ytPlayer.setVolume(vol);
+    if ('mediaSession' in navigator)
+      navigator.mediaSession.metadata=new MediaMetadata({title:name,artist:zone,album:'VibeTrace 🎮'});
+  };
+  if (!ytPlayer) { ytReadyCb=doPlay; loadYTApi(); }
+  else doPlay();
+}
+
+function stopYT() { if (ytPlayer?.stopVideo) { ytPlayer.stopVideo(); ytPlaying=false; ytPaused=false; } }
+function pauseYT() { if (ytPlayer?.pauseVideo) ytPlayer.pauseVideo(); }
+function resumeYT() { if (ytPlayer?.playVideo) ytPlayer.playVideo(); }
+
+function parseYTUrl(raw) {
+  // Extract title from URL or use a placeholder
+  const id = extractYTId(raw);
+  if (!id) return null;
+  return { type:'yt', id:'yt_'+id, name:'YouTube · '+id, ytId:id };
+}
+
+// ============================================================
+// MODAL — unified for zones + exterior
+// ============================================================
+let zoneMap=null, zoneMarker=null, zoneCircle=null;
+let editingId=null; // zone id or '__exterior__'
+let mdPlaylists={}; // { condKey: [{type,id,name,url?,ytId?}] }
+let mdEmoji='🏠', mdLat=null, mdLng=null;
+let activeCond='day|any';
+
+function openZoneModal(id=null) {
+  editingId=id;
+  mdPlaylists={};
+  mdEmoji='🏠'; mdLat=null; mdLng=null;
+  activeCond='day|any';
+
+  const isExt = id==='__exterior__';
+  const isNew = !id;
+  const existingZone = isExt ? exteriorZone : (id ? zones.find(z=>z.id===id) : null);
+
+  document.getElementById('mTitle').textContent = isExt ? '🌍 Zone Extérieur' : (isNew ? 'Nouvelle zone' : 'Modifier '+existingZone?.name);
+  document.getElementById('mBasicFields').style.display = isExt ? 'none' : '';
+  document.getElementById('saveBtn').textContent = '💾 Sauvegarder';
+
+  if (existingZone) {
+    mdEmoji=existingZone.emoji||'🏠';
+    mdLat=existingZone.lat; mdLng=existingZone.lng;
+    // Deep copy playlists (without blob URLs — we'll keep refs)
+    for (const [k,pl] of Object.entries(existingZone.playlists||{})) {
+      mdPlaylists[k] = pl.map(t=>({...t}));
+    }
+    if (!isExt) {
+      document.getElementById('zName').value=existingZone.name;
+      document.getElementById('radSlider').value=existingZone.radius||50;
+      document.getElementById('radDisplay').textContent=(existingZone.radius||50)+' mètres';
+      document.getElementById('posLabel').textContent=mdLat?'📍 '+mdLat.toFixed(5)+', '+mdLng.toFixed(5):'Aucune position';
+      document.querySelectorAll('.emoji-opt').forEach(el=>el.classList.toggle('selected',el.textContent===mdEmoji));
+    }
+  } else {
+    if (!isExt) {
+      document.getElementById('zName').value='';
+      document.getElementById('radSlider').value=50;
+      document.getElementById('radDisplay').textContent='50 mètres';
+      document.getElementById('posLabel').textContent='Aucune position capturée';
+      document.querySelectorAll('.emoji-opt').forEach((el,i)=>el.classList.toggle('selected',i===0));
+    }
+  }
+
+  renderCondTabs();
+  renderPlaylistPanel();
+
+  document.getElementById('mo').classList.add('open');
+
+  if (!isExt) {
+    document.getElementById('mapSearchInput').value='';
+    document.getElementById('searchResults').style.display='none';
+    document.getElementById('mapTip').classList.remove('hidden');
+    switchPosTab('map');
+    setTimeout(()=>initMap(mdLat,mdLng,existingZone?.radius||50),150);
+  }
+}
+
+function closeModal() {
+  document.getElementById('mo').classList.remove('open');
+  document.getElementById('searchResults').style.display='none';
+}
+function outsideClose(e){if(e.target===document.getElementById('mo'))closeModal();}
+function pickEmoji(el,em){document.querySelectorAll('.emoji-opt').forEach(e=>e.classList.remove('selected'));el.classList.add('selected');mdEmoji=em;}
+
+// ---- Condition tabs ----
+function renderCondTabs() {
+  document.getElementById('condTabs').innerHTML = CONDITIONS.map(c=>{
+    const hasTracks = (mdPlaylists[c.key]||[]).length > 0;
+    const isActive = c.key===activeCond;
+    return `<div class="cond-tab ${isActive?'active':''} ${hasTracks?'has-tracks':''}" onclick="switchCondTab('${c.key}')">${c.icon} ${c.label.split(' ').slice(-1)[0]}${hasTracks?' ✓':''}</div>`;
+  }).join('');
+}
+
+function switchCondTab(key) {
+  activeCond=key;
+  renderCondTabs();
+  renderPlaylistPanel();
+}
+
+// ---- Playlist panel ----
+function renderPlaylistPanel() {
+  const pl = mdPlaylists[activeCond]||[];
+  const cond = CONDITIONS.find(c=>c.key===activeCond);
+  let html=`<div class="pl-title"><span>${cond?.label} — ${pl.length} piste${pl.length>1?'s':''}</span></div>`;
+  if (pl.length) {
+    html+=pl.map((t,i)=>`<div class="track-item">
+      <span class="ti-num">${i+1}</span>
+      <span class="ti-type ${t.type}">${t.type==='yt'?'YT':'📁'}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.name}</span>
+      <button class="ti-del" onclick="removeTrack('${activeCond}',${i})">✕</button>
+    </div>`).join('');
+  } else {
+    html+=`<div style="font-size:12px;color:var(--text2);font-family:'Space Mono',monospace;padding:8px 0">Aucune piste pour cette condition</div>`;
+  }
+  // Add YouTube link
+  html+=`<div class="add-track-row">
+    <input class="form-input" type="text" id="ytInput" placeholder="Lien YouTube ou MP3...">
+    <button class="add-track-btn" onclick="addLinkTrack()">+ Lien</button>
+  </div>`;
+  // Add file
+  html+=`<div class="file-add-btn">
+    <input type="file" accept="audio/*" multiple onchange="addFileTracks(this)">
+    📁 Ajouter des fichiers audio
+  </div>`;
+  document.getElementById('playlistPanel').innerHTML=html;
+}
+
+function removeTrack(condKey, idx) {
+  if (!mdPlaylists[condKey]) return;
+  mdPlaylists[condKey].splice(idx,1);
+  renderCondTabs();
+  renderPlaylistPanel();
+}
+
+function addLinkTrack() {
+  const raw = document.getElementById('ytInput').value.trim();
+  if (!raw) return;
+  // Try YouTube first
+  const ytId = extractYTId(raw);
+  if (ytId) {
+    if (!mdPlaylists[activeCond]) mdPlaylists[activeCond]=[];
+    mdPlaylists[activeCond].push({type:'yt',id:'yt_'+ytId,name:'YouTube · '+ytId,ytId});
+    loadYTApi(); // preload API
+    renderCondTabs(); renderPlaylistPanel();
+    toast('✅ Lien YouTube ajouté');
+    return;
+  }
+  // Try direct audio URL
+  if (raw.startsWith('http')) {
+    if (!mdPlaylists[activeCond]) mdPlaylists[activeCond]=[];
+    const name = raw.split('/').pop().split('?')[0] || 'Audio en ligne';
+    mdPlaylists[activeCond].push({type:'url',id:'url_'+Date.now(),name,url:raw});
+    renderCondTabs(); renderPlaylistPanel();
+    toast('✅ Lien audio ajouté');
+    return;
+  }
+  toast('⚠️ Lien non reconnu (YouTube ou MP3 direct)');
+}
+
+async function addFileTracks(inp) {
+  const files = Array.from(inp.files);
+  if (!mdPlaylists[activeCond]) mdPlaylists[activeCond]=[];
+  for (const f of files) {
+    const id='trk_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const buf=await f.arrayBuffer();
+    await dbPut('audio',{id,name:f.name.replace(/\.[^.]+$/,''),data:buf,type:f.type});
+    const url=URL.createObjectURL(new Blob([buf],{type:f.type}));
+    mdPlaylists[activeCond].push({type:'file',id,name:f.name.replace(/\.[^.]+$/,''),url});
+  }
+  renderCondTabs(); renderPlaylistPanel();
+  toast(`✅ ${files.length} fichier(s) ajouté(s)`);
+}
+
+// ---- Save ----
+async function saveZone() {
+  const btn=document.getElementById('saveBtn');
+  btn.textContent='⏳ Sauvegarde...';
+
+  const isExt = editingId==='__exterior__';
+  const isNew = !editingId;
+  const name = isExt ? (exteriorZone.name) : document.getElementById('zName').value.trim();
+
+  if (!isExt && !name) { toast('⚠️ Donne un nom à la zone'); btn.textContent='💾 Sauvegarder'; return; }
+  if (!isExt && !mdLat && isNew) { toast('⚠️ Place la zone sur la carte'); btn.textContent='💾 Sauvegarder'; return; }
+
+  const radius=parseInt(document.getElementById('radSlider')?.value||50);
+
+  // Build playlists to persist (without blob URLs for file tracks — they're already in IndexedDB)
+  const persistPlaylists={};
+  for (const [k,pl] of Object.entries(mdPlaylists)) {
+    persistPlaylists[k]=pl.map(t=>{
+      if (t.type==='file') return {type:'file',id:t.id,name:t.name};
+      if (t.type==='yt') return {type:'yt',id:t.id,name:t.name,ytId:t.ytId};
+      if (t.type==='url') return {type:'url',id:t.id,name:t.name,url:t.url};
+      return t;
+    });
+  }
+
+  if (isExt) {
+    exteriorZone.playlists=mdPlaylists;
+    await dbPut('zones',{id:'__exterior__',emoji:exteriorZone.emoji,name:exteriorZone.name,lat:null,lng:null,radius:0,playlists:persistPlaylists,order:-1});
+    updateExtZoneCard();
+    if (curZone===-2) { trackIdx=0; playZone(); }
+    toast('✅ Zone Extérieur configurée !');
+  } else if (!isNew) {
+    const z=zones.find(z=>z.id===editingId);
+    z.emoji=mdEmoji; z.name=name; z.radius=radius;
+    if (mdLat!==null){z.lat=mdLat;z.lng=mdLng;}
+    z.playlists=mdPlaylists;
+    toast('✅ "'+name+'" modifié !');
+    await saveAll();
+    if (curZone===zones.indexOf(z)){trackIdx=0;playZone();}
+  } else {
+    const id='zone_'+Date.now();
+    const nz={id,emoji:mdEmoji,name,lat:mdLat,lng:mdLng,radius,playlists:mdPlaylists,order:zones.length};
+    zones.push(nz);
+    toast('✅ Zone "'+name+'" créée !');
+    await saveAll();
+  }
+
+  render();
+  closeModal();
+  btn.textContent='💾 Sauvegarder';
+}
+
+async function saveAll() {
+  for (let i=0;i<zones.length;i++) {
+    const z=zones[i];
+    const persistPlaylists={};
+    for (const [k,pl] of Object.entries(z.playlists||{})) {
+      persistPlaylists[k]=pl.map(t=>{
+        if (t.type==='file') return {type:'file',id:t.id,name:t.name};
+        if (t.type==='yt') return {type:'yt',id:t.id,name:t.name,ytId:t.ytId};
+        if (t.type==='url') return {type:'url',id:t.id,name:t.name,url:t.url};
+        return t;
+      });
+    }
+    await dbPut('zones',{id:z.id,emoji:z.emoji,name:z.name,lat:z.lat,lng:z.lng,radius:z.radius,playlists:persistPlaylists,order:i});
+  }
+}
+
+async function deleteZone(id) {
+  const idx=zones.findIndex(z=>z.id===id);
+  if (idx===-1) return;
+  if (!confirm('Supprimer "'+zones[idx].name+'" et ses musiques ?')) return;
+  // delete file tracks from IndexedDB
+  for (const pl of Object.values(zones[idx].playlists||{}))
+    for (const t of pl) if (t.type==='file') await dbDel('audio',t.id);
+  await dbDel('zones',zones[idx].id);
+  if (curZone===idx){stopAll();curZone=-2;}
+  else if (curZone>idx) curZone--;
+  zones.splice(idx,1);
+  render();
+  toast('🗑️ Zone supprimée');
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  updateExtZoneCard();
+  const l=document.getElementById('zl');
+  if (!zones.length) {
+    l.innerHTML='<div class="empty-state"><div class="ei">🗺️</div><p>Aucune zone définie.<br>Appuie sur <strong>+ Ajouter</strong> pour commencer !</p></div>';
+    return;
+  }
+  l.innerHTML=zones.map(z=>{
+    const active=zones.indexOf(z)===curZone;
+    const totalTracks=Object.values(z.playlists||{}).reduce((a,pl)=>a+pl.length,0);
+    const condCount=Object.keys(z.playlists||{}).filter(k=>(z.playlists[k]||[]).length>0).length;
+    let d='';
+    if (curLat!==null&&z.lat!==null) d=' · '+Math.round(dist(curLat,curLng,z.lat,z.lng))+'m';
+    return `<div class="zone-card ${active?'active-zone':''}">
+      <div class="zone-emoji">${z.emoji}</div>
+      <div class="zone-details">
+        <div class="zone-name">${z.name}${active?' 🎵':''}</div>
+        <div class="zone-track">${totalTracks} piste${totalTracks>1?'s':''} · ${condCount} condition${condCount>1?'s':''}${d}</div>
+      </div>
+      <div class="zone-radius-tag">${z.radius}m</div>
+      <div class="zone-actions">
+        <button class="icon-btn" onclick="openZoneModal('${z.id}')">✏️</button>
+        <button class="icon-btn danger" onclick="deleteZone('${z.id}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateExtZoneCard() {
+  const total=Object.values(exteriorZone.playlists||{}).reduce((a,pl)=>a+pl.length,0);
+  const conds=Object.keys(exteriorZone.playlists||{}).filter(k=>(exteriorZone.playlists[k]||[]).length>0).length;
+  document.getElementById('extZoneEmoji').textContent=exteriorZone.emoji;
+  document.getElementById('extZoneName').innerHTML=exteriorZone.name+' <span style="font-size:11px;color:var(--text2);font-family:\'Space Mono\',monospace">(zone par défaut)</span>';
+  document.getElementById('extZoneTrack').textContent=total+' piste'+(total>1?'s':'')+' · '+conds+' condition'+(conds>1?'s':'')+' — active hors de toute zone';
+  document.getElementById('extZoneCard').className='zone-card'+(curZone===-2?' active-zone':'');
+}
+
+// ============================================================
+// MAP
+// ============================================================
+function initMap(lat,lng,radius){
+  if (!zoneMap){
+    zoneMap=L.map('zoneMap',{zoomControl:true,attributionControl:false});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(zoneMap);
+    zoneMap.on('click',e=>placeMapPin(e.latlng.lat,e.latlng.lng));
+  }
+  const clat=lat??curLat??48.8566, clng=lng??curLng??2.3522;
+  zoneMap.setView([clat,clng],lat?16:curLat?15:12);
+  if (lat!==null&&lat!==undefined) placeMapPin(lat,lng,radius,false);
+  setTimeout(()=>zoneMap.invalidateSize(),50);
+}
+
+function placeMapPin(lat,lng,radius,updateMd=true){
+  if (updateMd){mdLat=lat;mdLng=lng;}
+  const r=radius??parseInt(document.getElementById('radSlider').value);
+  document.getElementById('posLabel').textContent='📍 '+lat.toFixed(5)+', '+lng.toFixed(5);
+  document.getElementById('mapTip').classList.add('hidden');
+  const icon=L.divIcon({html:`<div style="width:26px;height:26px;background:linear-gradient(135deg,#7c5cfc,#fc5c7d);border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div>`,iconSize:[26,26],iconAnchor:[13,26],className:''});
+  if (zoneMarker) zoneMap.removeLayer(zoneMarker);
+  if (zoneCircle) zoneMap.removeLayer(zoneCircle);
+  zoneMarker=L.marker([lat,lng],{icon,draggable:true}).addTo(zoneMap);
+  zoneMarker.on('dragend',e=>{const p=e.target.getLatLng();placeMapPin(p.lat,p.lng);});
+  zoneCircle=L.circle([lat,lng],{radius:r,color:'#7c5cfc',fillColor:'#7c5cfc',fillOpacity:.12,weight:2}).addTo(zoneMap);
+}
+
+function updateMapCircle(r){if(zoneCircle)zoneCircle.setRadius(parseInt(r));}
+
+function switchPosTab(tab){
+  document.getElementById('tabMap').classList.toggle('active',tab==='map');
+  document.getElementById('tabGPS').classList.toggle('active',tab==='gps');
+  document.getElementById('mapPosPanel').style.display=tab==='map'?'':'none';
+  document.getElementById('gpsPosPanel').style.display=tab==='gps'?'':'none';
+  if (tab==='map') setTimeout(()=>zoneMap&&zoneMap.invalidateSize(),100);
+}
+
+let searchTimeout=null;
+function debounceSearch(q){
+  clearTimeout(searchTimeout);
+  const el=document.getElementById('searchResults');
+  if (!q||q.length<3){el.style.display='none';return;}
+  searchTimeout=setTimeout(()=>doSearch(q),400);
+}
+async function doSearch(q){
+  const el=document.getElementById('searchResults');
+  try {
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&accept-language=fr`);
+    const data=await r.json();
+    if (!data.length){el.style.display='none';return;}
+    el.style.display='block';
+    el.innerHTML=data.map(d=>`<div class="search-result-item" onclick="selectSearchResult(${d.lat},${d.lon},\`${d.display_name.replace(/`/g,"'")}\`)">📍 ${d.display_name}</div>`).join('');
+  }catch(e){el.style.display='none';}
+}
+function selectSearchResult(lat,lng,name){
+  document.getElementById('mapSearchInput').value=name;
+  document.getElementById('searchResults').style.display='none';
+  zoneMap.setView([lat,lng],16);
+  placeMapPin(parseFloat(lat),parseFloat(lng));
+}
+
+function capturePos(){
+  if (curLat!==null){
+    mdLat=curLat;mdLng=curLng;
+    document.getElementById('posLabel').textContent='📍 '+curLat.toFixed(5)+', '+curLng.toFixed(5);
+    placeMapPin(curLat,curLng,null,false);
+    zoneMap?.setView([curLat,curLng],16);
+    toast('✅ Position capturée !');
+  } else toast('⚠️ GPS pas encore actif');
+}
+
+function updateRad(v){
+  document.getElementById('radDisplay').textContent=v+' mètres';
+  updateMapCircle(v);
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function setStatus(type,txt){
+  document.getElementById('sdot').className='dot '+(type==='active'?'active':type==='searching'?'searching':'');
+  document.getElementById('stxt').textContent=txt;
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+function updateSpeed(spd){
+  const k=spd*3.6;
+  const [l,ic]=k>40?['en voiture','🚗']:k>8?['en vélo','🚴']:k>1.5?['en marche','🚶']:['immobile','🧍'];
+  document.getElementById('st').textContent=l;
+  document.getElementById('si').textContent=ic;
+}
+
+// ÉCRAN OFF
+function toggleScreenOff() {
+  const overlay = document.getElementById('screenOverlay');
+  const btn = document.getElementById('screenOffBtn');
+  overlay.classList.add('on');
+  btn.classList.add('active');
+  btn.textContent = '📴 Écran off';
+  // Reset input
+  const inp = document.getElementById('unlockInput');
+  inp.value = '';
+  document.getElementById('unlockHint').textContent = 'tape "zelda" pour rallumer';
+  document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
+  setTimeout(() => inp.focus(), 300);
+}
+
+function checkUnlock(val) {
+  if (val.toLowerCase() === 'zelda') {
+    const overlay = document.getElementById('screenOverlay');
+    const btn = document.getElementById('screenOffBtn');
+    overlay.classList.remove('on');
+    btn.classList.remove('active');
+    btn.textContent = '📴 Écran off';
+    document.getElementById('unlockInput').value = '';
+  } else if (val.length >= 5) {
+    document.getElementById('unlockHint').textContent = '❌ mot de passe incorrect';
+    document.getElementById('unlockHint').style.color = 'rgba(252,92,125,.8)';
+    setTimeout(() => {
+      document.getElementById('unlockInput').value = '';
+      document.getElementById('unlockHint').textContent = 'tape "zelda" pour rallumer';
+      document.getElementById('unlockHint').style.color = 'rgba(255,255,255,.2)';
+    }, 800);
+  }
+}
+
+// ============================================================
+// POI — Règles globales par catégorie de lieu
+// La playlist est définie UNE FOIS par type (ex: "Fast Food")
+// et s'applique à TOUS les lieux de ce type détectés autour de toi
+// ============================================================
+const POI_TYPES = [
+  { id:'fast_food',    tag:'amenity=fast_food',    emoji:'🍔', label:'Fast Food'       },
+  { id:'restaurant',   tag:'amenity=restaurant',   emoji:'🍽️', label:'Restaurant'      },
+  { id:'cafe',         tag:'amenity=cafe',         emoji:'☕', label:'Café'            },
+  { id:'bus_stop',     tag:'highway=bus_stop',     emoji:'🚌', label:'Arrêt de bus'    },
+  { id:'station',      tag:'railway=station',      emoji:'🚉', label:'Gare'            },
+  { id:'school',       tag:'amenity=school',       emoji:'🏫', label:'École'           },
+  { id:'park',         tag:'leisure=park',         emoji:'🌳', label:'Parc'            },
+  { id:'supermarket',  tag:'shop=supermarket',     emoji:'🛒', label:'Supermarché'     },
+  { id:'pharmacy',     tag:'amenity=pharmacy',     emoji:'💊', label:'Pharmacie'       },
+  { id:'gym',          tag:'amenity=gym',          emoji:'🏋️', label:'Salle de sport'  },
+  { id:'cinema',       tag:'amenity=cinema',       emoji:'🎬', label:'Cinéma'          },
+  { id:'library',      tag:'amenity=library',      emoji:'📚', label:'Bibliothèque'    },
+  { id:'bar',          tag:'amenity=bar',          emoji:'🍺', label:'Bar'             },
+  { id:'mall',         tag:'shop=mall',            emoji:'🛍️', label:'Centre commercial'},
+];
+
+// poiRules: { [typeId]: { enabled: bool, playlists: { condKey: [tracks] } } }
+let poiRules = {};
+let nearbyPOI = []; // instances détectées via Overpass
+let curPOI = null, poiTimer = null, pendingPOI = null;
+let lastPoiScan = 0;
+const POI_SCAN_THROTTLE = 60000;
+
+async function loadPOIRules() {
+  const saved = await dbGet('prefs', 'poiRules2');
+  if (saved?.value) {
+    for (const [typeId, rule] of Object.entries(saved.value)) {
+      poiRules[typeId] = { enabled: rule.enabled ?? true, playlists: {} };
+      for (const [k, pl] of Object.entries(rule.playlists || {})) {
+        poiRules[typeId].playlists[k] = (await Promise.all(pl.map(async t => {
+          if (t.type === 'file') {
+            const ar = await dbGet('audio', t.id);
+            if (ar) return { ...t, url: URL.createObjectURL(new Blob([ar.data],{type:ar.type})) };
+            return null;
+          }
+          return t;
+        }))).filter(Boolean);
+      }
+    }
+  }
+  for (const pt of POI_TYPES) {
+    if (!poiRules[pt.id]) poiRules[pt.id] = { enabled: true, playlists: {} };
+  }
+  const rp = await dbGet('prefs', 'poiRadius');
+  if (rp) {
+    document.getElementById('poiRadiusSlider').value = rp.value;
+    document.getElementById('poiRadiusVal').textContent = rp.value + 'm';
+  }
+  renderPOICats();
+}
+
+async function savePOIRules() {
+  const persist = {};
+  for (const [typeId, rule] of Object.entries(poiRules)) {
+    persist[typeId] = { enabled: rule.enabled, playlists: {} };
+    for (const [k, pl] of Object.entries(rule.playlists || {})) {
+      persist[typeId].playlists[k] = pl.map(t => t.type==='file' ? {type:'file',id:t.id,name:t.name} : t);
+    }
+  }
+  await dbPut('prefs', { key:'poiRules2', value: persist });
+}
+
+async function savePOIRadius(v) {
+  await dbPut('prefs', { key:'poiRadius', value: parseInt(v) });
+}
+
+function renderPOICats() {
+  const el = document.getElementById('poiCatList');
+  const activePOITypeId = curPOI?.typeId;
+  el.innerHTML = '<div class="poi-cat-grid">' + POI_TYPES.map(pt => {
+    const rule = poiRules[pt.id] || { enabled:true, playlists:{} };
+    const totalTracks = Object.values(rule.playlists||{}).reduce((a,pl)=>a+pl.length,0);
+    const isActive = activePOITypeId === pt.id;
+    const hasMusic = totalTracks > 0;
+    const cls = ['poi-cat-card', isActive?'active-zone':'', hasMusic&&!isActive?'has-music':''].filter(Boolean).join(' ');
+    return `<div class="${cls}">
+      <div class="zone-emoji" style="font-size:20px;width:40px;height:40px;">${pt.emoji}</div>
+      <div class="zone-details">
+        <div class="zone-name" style="font-size:14px;">${pt.label}${isActive?' 🎵':''}</div>
+        <div class="zone-track">${hasMusic ? totalTracks+' piste'+(totalTracks>1?'s':'') : '<span style="color:var(--text2)">aucune musique</span>'} — tous les "${pt.label}"</div>
+      </div>
+      <button class="poi-cat-toggle ${rule.enabled?'on':''}" onclick="togglePOIType('${pt.id}',event)"></button>
+      <button class="icon-btn" onclick="openPOICatModal('${pt.id}')">🎵</button>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function togglePOIType(typeId, e) {
+  e.stopPropagation();
+  if (!poiRules[typeId]) poiRules[typeId] = { enabled:true, playlists:{} };
+  poiRules[typeId].enabled = !poiRules[typeId].enabled;
+  savePOIRules();
+  renderPOICats();
+}
+
+function openPOICatModal(typeId) {
+  const pt = POI_TYPES.find(p => p.id === typeId);
+  if (!pt) return;
+  const rule = poiRules[typeId] || { enabled:true, playlists:{} };
+  editingId = '__poi__' + typeId;
+  mdPlaylists = {};
+  for (const [k,v] of Object.entries(rule.playlists||{})) mdPlaylists[k] = [...v];
+  activeCond = 'day|any';
+  document.getElementById('mTitle').textContent = `${pt.emoji} ${pt.label} — partout`;
+  document.getElementById('mBasicFields').style.display = 'none';
+  document.getElementById('saveBtn').onclick = () => savePOICatModal(typeId);
+  document.getElementById('saveBtn').textContent = '💾 Sauvegarder';
+  renderCondTabs();
+  renderPlaylistPanel();
+  document.getElementById('mo').classList.add('open');
+}
+
+async function savePOICatModal(typeId) {
+  if (!poiRules[typeId]) poiRules[typeId] = { enabled:true, playlists:{} };
+  poiRules[typeId].playlists = { ...mdPlaylists };
+  await savePOIRules();
+  renderPOICats();
+  closeModal();
+  document.getElementById('saveBtn').onclick = saveZone;
+  toast(`✅ Playlist appliquée à tous les "${POI_TYPES.find(p=>p.id===typeId)?.label}" !`);
+}
+
+async function checkPOI() {
+  if (!curLat) return;
+  const radius = parseInt(document.getElementById('poiRadiusSlider').value);
+  const now = Date.now();
+  if (now - lastPoiScan > POI_SCAN_THROTTLE) {
+    lastPoiScan = now;
+    try {
+      const enabledTypes = POI_TYPES.filter(pt => poiRules[pt.id]?.enabled !== false);
+      if (!enabledTypes.length) return;
+      const scanRadius = Math.max(radius * 4, 150);
+      const tags = enabledTypes.map(p => { const [k,v]=p.tag.split('='); return `node["${k}"="${v}"](around:${scanRadius},${curLat},${curLng});`; }).join('');
+      const r = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body:'data='+encodeURIComponent(`[out:json][timeout:8];(${tags});out body;`) });
+      const data = await r.json();
+      nearbyPOI = data.elements.map(el => {
+        const pt = POI_TYPES.find(p => { const [k,v]=p.tag.split('='); return el.tags?.[k]===v; });
+        return pt ? { typeId:pt.id, emoji:pt.emoji, label:pt.label, name:el.tags?.name||pt.label, lat:el.lat, lng:el.lon } : null;
+      }).filter(Boolean);
+    } catch(e) {}
+  }
+  let closest = null, closestDist = Infinity;
+  for (const p of nearbyPOI) {
+    if (!poiRules[p.typeId]?.enabled) continue;
+    const pl = getBestPlaylist(poiRules[p.typeId]);
+    if (!pl?.length) continue;
+    const d = dist(curLat, curLng, p.lat, p.lng);
+    if (d < radius && d < closestDist) { closestDist=d; closest=p; }
+  }
+  if (closest && closest.typeId !== curPOI?.typeId && closest.typeId !== pendingPOI?.typeId) {
+    startPOITimer(closest);
+  } else if (!closest && pendingPOI) {
+    cancelPOITimer();
+  } else if (!closest && curPOI) {
+    curPOI = null; renderPOICats();
+  }
+}
+
+function startPOITimer(p) {
+  cancelPOITimer(); pendingPOI = p;
+  toast(`📍 ${p.emoji} ${p.label} — attendre 15s...`);
+  const bar = document.getElementById('poiTimerBar');
+  bar.style.transition='none'; bar.style.width='0%';
+  setTimeout(()=>{ bar.style.transition='width 15s linear'; bar.style.width='100%'; }, 50);
+  poiTimer = setTimeout(()=>{ curPOI=pendingPOI; pendingPOI=null; bar.style.transition='none'; bar.style.width='0%'; activatePOI(curPOI); }, 15000);
+}
+
+function cancelPOITimer() {
+  if (poiTimer) { clearTimeout(poiTimer); poiTimer=null; }
+  pendingPOI=null;
+  const bar = document.getElementById('poiTimerBar');
+  bar.style.transition='none'; bar.style.width='0%';
+}
+
+function activatePOI(p) {
+  const rule = poiRules[p.typeId];
+  if (!rule) return;
+  const pl = getBestPlaylist(rule);
+  if (!pl?.length) { toast(`${p.emoji} ${p.label} — configure une musique !`); renderPOICats(); return; }
+  if (curZone !== -2) return; // zones manuelles prioritaires
+  toast(`🎵 ${p.emoji} ${p.name}`);
+  const t = pl[Math.floor(Math.random() * pl.length)];
+  document.getElementById('czIcon').textContent = p.emoji;
+  document.getElementById('czName').textContent = p.name;
+  document.getElementById('czSub').textContent = `📍 ${p.label}`;
+  document.getElementById('tn').textContent = t.name;
+  document.getElementById('tn').classList.remove('empty');
+  if (t.type==='yt') { ap.pause(); ap.src=''; playYT(t.ytId,t.name,p.label); }
+  else { stopYT(); ap.src=t.url; ap.play().catch(()=>{}); }
+  renderPOICats();
+}
+
+boot();
+
+
+
+// SERVICE WORKER
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .then(reg => console.log('✅ SW actif:', reg.scope))
+    .catch(err => console.log('❌ SW:', err));
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'gps-resync') checkZones();
+  });
+}
+
+// WAKE LOCK
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') { await requestWakeLock(); checkZones(); }
+});
+requestWakeLock();
+
+// PWA INSTALL
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e;
+  setTimeout(() => toast('📲 Installe VibeTrace sur ton écran d\'accueil !'), 2000);
+});
+</script>
+</body>
+</html>
